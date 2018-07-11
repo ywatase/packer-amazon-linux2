@@ -1,0 +1,7 @@
+SHA256SUMS
+seed.iso
+*.key
+*.vdi
+*.ova
+*.box
+packer_cache/

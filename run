@@ -1,0 +1,37 @@
+#!/bin/sh
+set -e
+# get latest version of amazon linux 2
+export AMZN2_VERSION=$(curl -qfsSD - https://cdn.amazonlinux.com/os-images/latest/  | grep Location:  | grep -oE '/[0-9\.]+/' | sed -e 's#/##g')
+export AMZN2_VERSION_PREFIX=$(echo $AMZN2_VERSION | awk -F. -v OFS=. '{print $3,$4}')
+export AMZN2_VDI=amzn2-virtualbox-${AMZN2_VERSION}-x86_64.xfs.gpt.vdi
+export AMZN2_OVA=amzn2-virtualbox-${AMZN2_VERSION}-x86_64.xfs.gpt.ova
+
+: ${IMAGE_URL:=https://cdn.amazonlinux.com/os-images/$AMZN2_VERSION/virtualbox/$AMZN2_VDI}
+: ${IMAGE_CHECKSUM_URL:=https://cdn.amazonlinux.com/os-images/$AMZN2_VERSION/virtualbox/SHA256SUMS}
+
+# download latest amazon linux 2 image
+if ! [[ -e $AMZN2_VDI ]] ; then
+	curl -qsSLO $IMAGE_URL
+	curl -qsSLO $IMAGE_CHECKSUM_URL
+	sha256sum -c SHA256SUMS || mv $AMZN2_VDI $AMZN2_VDI.failed
+	[[ -e $AMZN2_VDI ]]
+fi
+# make seed.iso for UserData
+[[ -e seed.iso ]] || hdiutil makehybrid -iso -joliet -o seed.iso seed -joliet-volume-name cidata
+
+# download vagrant insecure private key
+curl -sL https://raw.githubusercontent.com/hashicorp/vagrant/master/keys/vagrant -o vagrant.key
+
+# create OVA
+VM=amznlinux2
+if ! [[ -e $AMZN2_OVA ]] ; then
+	VBoxManage createvm --name "$VM" --ostype "RedHat_64" --register
+	VBoxManage storagectl "$VM" --name "SATA Controller" --add "sata" --controller "IntelAHCI"
+	VBoxManage storageattach "$VM" --storagectl "SATA Controller" --port 0 --device 0 --type hdd --medium $AMZN2_VDI
+	VBoxManage export "$VM" -o $AMZN2_OVA
+	VBoxManage unregistervm "$VM"
+fi
+
+
+# VMの作成とAmazon Linux 2の起動
+packer build vagrant-amzn2.json

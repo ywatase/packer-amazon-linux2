@@ -1,0 +1,95 @@
+{
+  "variables": {
+    "source_path": "{{env `AMZN2_OVA` }}",
+    "memory": "2048",
+    "cpu_cores": "4",
+    "run_virtualbox.sh": "yes",
+    "vagrant_cloud_access_token": "{{ env `ATLAS_TOKEN` }}",
+    "vagrant_cloud_box_tag": "ywatase/amzn2",
+    "vagrant_cloud_version": "{{env `AMZN2_VERSION_PREFIX` }}.{{isotime \"20060102\"}}"
+  },
+  "builders": [
+    {
+      "name": "virtualbox-ovf",
+      "type": "virtualbox-ovf",
+      "boot_wait": "10s",
+      "shutdown_command": "echo 'packer' | sudo -S shutdown -P now",
+      "source_path": "{{user `source_path`}}",
+      "ssh_username": "vagrant",
+      "ssh_password": "vagrant",
+      "ssh_private_key_file": "{{template_dir}}/vagrant.key",
+      "ssh_port": 22,
+      "ssh_wait_timeout": "15m",
+      "vboxmanage": [
+        [
+          "storagectl",
+          "{{.Name}}",
+          "--name",
+          "IDE Controller",
+          "--add",
+          "ide"
+        ],
+        [
+          "storageattach",
+          "{{.Name}}",
+          "--storagectl",
+          "IDE Controller",
+          "--port",
+          "0",
+          "--device",
+          "1",
+          "--type",
+          "dvddrive",
+          "--medium",
+          "{{template_dir}}/seed.iso"
+        ],
+        [
+          "modifyvm",
+          "{{.Name}}",
+          "--memory",
+          "{{ user `memory`}}"
+        ],
+        [
+          "modifyvm",
+          "{{.Name}}",
+          "--cpus",
+          "{{ user `cpu_cores`}}"
+        ]
+      ],
+      "virtualbox_version_file": ".vbox_version",
+      "guest_additions_path": "VBoxGuestAdditions_{{.Version}}.iso"
+    }],
+    "provisioners": [{
+      "type": "shell",
+      "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
+      "environment_vars": [
+        "RUN_VIRTUALBOX_SHELL={{ user `run_virtualbox.sh` }}"
+      ],
+      "scripts": [
+        "scripts/virtualbox.sh",
+        "scripts/cleanup.sh",
+        "scripts/cleanup_device.sh",
+        "scripts/zerodisk.sh"
+      ]
+    }],
+    "post-processors": [
+      [
+        {
+          "type": "vagrant",
+          "compression_level": 1,
+          "override": {
+            "vmware": {
+              "compression_level": 0
+            }
+          },
+          "output": "amzn2_{{.Provider}}.box"
+        },
+        {
+          "type": "vagrant-cloud",
+          "access_token": "{{ user `vagrant_cloud_access_token` }}",
+          "box_tag": "{{ user `vagrant_cloud_box_tag` }}",
+          "version": "{{ user `vagrant_cloud_version` }}"
+        }
+      ]
+    ]
+}
